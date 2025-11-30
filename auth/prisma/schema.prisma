@@ -1,3 +1,4 @@
+// prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -8,12 +9,55 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// 1. ตารางเก็บข้อมูลการเชื่อมต่อ (เช่น เชื่อมกับ Google, Facebook)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// 2. ตารางเก็บ Session (ถ้าใช้ Database Session)
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// 3. ตาราง User (ปรับปรุงใหม่)
 model User {
-  id        Int      @id @default(autoincrement())
-  username  String   @unique
-  email     String   @unique
-  name      String?
-  password  String
-  createdAt DateTime @default(now())
+  id            String    @id @default(cuid()) // ⚠️ เปลี่ยนจาก Int เป็น String (CUID) เพื่อรองรับ Social Login ได้ดีกว่า
+  name          String?
+  username      String?   @unique
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?   // เก็บรูปโปรไฟล์จาก Google
+  password      String?   // เป็น Optional เพราะคนใช้ Google จะไม่มี Password
+  role          String    @default("USER")
+  createdAt     DateTime  @default(now())
+  
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
 }

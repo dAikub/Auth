@@ -1,11 +1,25 @@
-// app/api/auth/[...nextauth]/route.ts
-import NextAuth from "next-auth"
+import NextAuth, { AuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
+import GoogleProvider from "next-auth/providers/google" // 1. เพิ่ม Google
+import { PrismaAdapter } from "@next-auth/prisma-adapter" // 2. เพิ่ม Adapter
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 
-const handler = NextAuth({
+export const authOptions: AuthOptions = {
+  // 3. เชื่อมต่อ Adapter
+  adapter: PrismaAdapter(prisma),
+  
   providers: [
+    // --- ส่วนของ Google ---
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID as string,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      
+      // (Optional) อนุญาตให้คนที่มี Email เดิมในระบบ ล็อกอินด้วย Google ได้เลยโดยไม่ Error
+      allowDangerousEmailAccountLinking: true, 
+    }),
+
+    // --- ส่วนของ Credentials (Username/Password) เดิม ---
     CredentialsProvider({
       name: "Credentials",
       credentials: {
@@ -13,45 +27,48 @@ const handler = NextAuth({
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        // 1. เช็คว่ากรอกข้อมูลมาครบไหม
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error('Please enter an email and password')
-        }
-
-        // 2. ค้นหา User จาก Database
+        if (!credentials?.email || !credentials?.password) return null
+        
         const user = await prisma.user.findUnique({
           where: { email: credentials.email }
         })
 
-        // 3. ถ้าไม่มี User หรือ User ไม่มีรหัสผ่าน
         if (!user || !user.password) {
-          throw new Error('No user found')
+           throw new Error("User not found or password not set")
         }
 
-        // 4. (สำคัญ!) เช็คว่ารหัสผ่านที่กรอก ตรงกับ Hash ใน Database ไหม
-        // หมายเหตุ: ตอนนี้ DB เราเก็บ password แบบ plain text อยู่ เดี๋ยวต้องไปแก้ Seed
-        // แต่เขียนโค้ดเผื่อไว้เลย
-        const isPasswordValid = await bcrypt.compare(credentials.password, user.password) 
-        
-        // *ชั่วคราว* : ถ้ายังไม่ได้ Hash ให้ใช้แบบนี้ไปก่อน (ห้ามใช้ใน Production)
-        // const isPasswordValid = credentials.password === user.password
+        const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
+        if (!isPasswordValid) return null
 
-        if (!isPasswordValid) {
-          throw new Error('Incorrect password')
-        }
-
-        // 5. ถ้าผ่านหมด ส่งข้อมูล User กลับไป (Login สำเร็จ!)
         return {
-          id: user.id.toString(),
-          name: user.name,
+          id: user.id, // ตอนนี้เป็น String แล้ว
+          name: user.username || user.name,
           email: user.email,
+          image: user.image,
         }
       }
     })
   ],
+  
+  // ⚠️ สำคัญมาก: เมื่อใช้ Adapter คู่กับ Credentials ต้องบังคับใช้ JWT
+  session: {
+    strategy: "jwt"
+  },
+  
   pages: {
-    signIn: '/login', // บอกว่าจะใช้หน้า Login ของเราเองที่ path นี้
+    signIn: '/login',
+  },
+  
+  callbacks: {
+    // เพิ่ม id เข้าไปใน session เพื่อให้ frontend เรียกใช้ได้
+    session: async ({ session, token }) => {
+      if (session?.user) {
+        session.user.id = token.sub as string; // ดึง ID จาก Token มาใส่ Session
+      }
+      return session;
+    }
   }
-})
+}
 
+const handler = NextAuth(authOptions)
 export { handler as GET, handler as POST }

@@ -16,7 +16,7 @@ export default function LoginPage() {
     
     // เรียกใช้ฟังก์ชัน signIn ของ NextAuth
     const result = await signIn('credentials', {
-      redirect: false, // ไม่ต้องเด้งเปลี่ยนหน้าออโต้ เดี๋ยวเราจัดการเอง
+      redirect: false, // ไม่ต้องเด้งเปลี่ยนหน้าออโต้
       email,
       password,
     })
@@ -60,7 +60,20 @@ export default function LoginPage() {
           Login
         </button>
         <button><Link href="/register">Register</Link></button>
+
       </form>
+
+
+        {/* ปุ่ม Google */}
+        <button
+          type="button"
+          onClick={() => signIn('google', { callbackUrl: '/' })}
+          className="w-full flex justify-center items-center gap-2 bg-white border border-gray-300 p-2 rounded hover:bg-gray-50 text-gray-700 font-medium"
+        >
+          <img src="https://authjs.dev/img/providers/google.svg" alt="Google" className="w-5 h-5" />
+          เข้าสู่ระบบด้วย Google
+        </button>
+
     </div>
   )
 }
